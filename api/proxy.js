@@ -19,11 +19,11 @@ export default async function handler(req, res) {
 
   console.log(`Proxy: ${method} ${targetUrl}`);
 
-  // Build headers for the target request
+  // Build headers for the target request (strip cookies to avoid session issues)
   const headers = {};
   const skipHeaders = ['host', 'x-http-method-override', 'x-http-method',
                        'connection', 'x-forwarded-for', 'x-forwarded-proto',
-                       'x-vercel-id', 'x-vercel-deployment-url'];
+                       'x-vercel-id', 'x-vercel-deployment-url', 'cookie'];
 
   for (const [key, value] of Object.entries(req.headers)) {
     if (!skipHeaders.includes(key.toLowerCase())) {
@@ -51,11 +51,12 @@ export default async function handler(req, res) {
       body: body,
     });
 
-    // Forward response headers
+    // Forward response headers (strip cookies to avoid session issues)
     const responseHeaders = {};
     response.headers.forEach((value, key) => {
-      // Skip some headers that shouldn't be forwarded
-      if (!['content-encoding', 'transfer-encoding', 'connection'].includes(key.toLowerCase())) {
+      // Skip headers that shouldn't be forwarded
+      const skip = ['content-encoding', 'transfer-encoding', 'connection', 'set-cookie'];
+      if (!skip.includes(key.toLowerCase())) {
         responseHeaders[key] = value;
       }
     });
