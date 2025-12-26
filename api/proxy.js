@@ -1,13 +1,38 @@
 // CalDAV Proxy for ZeppOS
-// Forwards requests to Nextcloud with correct HTTP methods
+// Forwards requests to Nextcloud/CalDAV servers with correct HTTP methods
+// Multi-user: Target host passed via X-Target-Host header
 
-const TARGET_HOST = 'https://kai.nl.tab.digital';
+// Fallback for backwards compatibility (optional)
+const DEFAULT_HOST = process.env.CALDAV_DEFAULT_HOST || null;
 
 export default async function handler(req, res) {
+  // Get target host from header or fallback to default
+  let targetHost = req.headers['x-target-host'] || DEFAULT_HOST;
+
+  // Validate target host
+  if (!targetHost) {
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    res.end('Missing X-Target-Host header. Please configure your Nextcloud URL in the app.');
+    return;
+  }
+
+  // Basic validation: must look like a CalDAV endpoint
+  if (!targetHost.includes('/remote.php/dav') && !targetHost.includes('/dav')) {
+    // Allow if it's just a base URL (we'll append the path)
+    if (!targetHost.startsWith('http://') && !targetHost.startsWith('https://')) {
+      targetHost = 'https://' + targetHost;
+    }
+  }
+
+  // Remove trailing slash from host
+  if (targetHost.endsWith('/')) {
+    targetHost = targetHost.slice(0, -1);
+  }
+
   // Get the path from the URL (everything after the proxy domain)
   const url = new URL(req.url, `http://${req.headers.host}`);
   const targetPath = url.pathname + url.search;
-  const targetUrl = TARGET_HOST + targetPath;
+  const targetUrl = targetHost + targetPath;
 
   // Determine the actual HTTP method
   let method = req.method;
@@ -22,8 +47,9 @@ export default async function handler(req, res) {
   // Build headers for the target request (strip cookies to avoid session issues)
   const headers = {};
   const skipHeaders = ['host', 'x-http-method-override', 'x-http-method',
-                       'connection', 'x-forwarded-for', 'x-forwarded-proto',
-                       'x-vercel-id', 'x-vercel-deployment-url', 'cookie'];
+                       'x-target-host', 'connection', 'x-forwarded-for',
+                       'x-forwarded-proto', 'x-vercel-id', 'x-vercel-deployment-url',
+                       'cookie'];
 
   for (const [key, value] of Object.entries(req.headers)) {
     if (!skipHeaders.includes(key.toLowerCase())) {
